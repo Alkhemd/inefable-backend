@@ -1,0 +1,43 @@
+# Compilados de TypeScript
+dist/
+dist-tsc/
+
+# Dependencias de Node
+node_modules/
+package-lock.json
+
+# Variables de entorno y secretos
+.env
+.env.test
+.env.production
+.env.local
+
+# Logs y debug
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+*.log
+
+# Entornos de desarrollo y editores
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Archivos del SO
+.DS_Store
+Thumbs.db
+
+# Cobertura de pruebas (Tests)
+coverage/
+.nyc_output/
+
+# Archivos temporales o de scripts locales
+test-quick.ts
+test-quick.js
+extract-types.js
+.temp/
+temp/
