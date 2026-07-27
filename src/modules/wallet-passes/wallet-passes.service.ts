@@ -103,6 +103,32 @@ export class WalletPassesService {
       throw new InternalServerErrorException('Error interno de configuración de tarjetas.');
     }
 
+    // Obtener los detalles del negocio y pase desde la base de datos
+    const supabase = this.supabase.client;
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('business_id')
+      .eq('id', customerId)
+      .single();
+
+    if (!customer) throw new InternalServerErrorException('Cliente no encontrado para generar pase');
+
+    const { data: business } = await supabase
+      .from('businesses')
+      .select('name')
+      .eq('id', customer.business_id)
+      .single();
+
+    const { data: pass } = await supabase
+      .from('passes')
+      .select('description, background_color')
+      .eq('business_id', customer.business_id)
+      .single();
+
+    const businessName = business?.name || 'Tarjeta de Lealtad';
+    const passDescription = pass?.description || 'Tarjeta de Lealtad';
+    const hexBackgroundColor = pass?.background_color || '#2563EB';
+
     // Formatear llave privada para leer los saltos de línea correctamente desde .env
     // Manejar casos donde vengan con \n literal, comillas extra o saltos reales.
     privateKey = privateKey
@@ -122,15 +148,10 @@ export class WalletPassesService {
       id: objectId,
       classId: classId,
       state: 'ACTIVE',
-      heroImage: {
-        sourceUri: {
-          uri: 'https://images.unsplash.com/photo-1557683311-eac922347aa1?q=80&w=1000&auto=format&fit=crop',
-          description: 'Fondo abstracto premium Inefable'
-        }
-      },
+      hexBackgroundColor: hexBackgroundColor,
       textModulesData: [
         {
-          header: 'Inefable',
+          header: businessName,
           body: '¡Escanea para ganar sellos!',
           id: 'info_module'
         },
@@ -148,13 +169,13 @@ export class WalletPassesService {
       cardTitle: {
         defaultValue: {
           language: 'es-MX',
-          value: 'Tarjeta de Lealtad'
+          value: passDescription
         }
       },
       header: {
         defaultValue: {
           language: 'es-MX',
-          value: 'Inefable Wallet'
+          value: businessName
         }
       }
     };
