@@ -114,12 +114,14 @@ export class CustomersService {
     }
 
     // 3. Verificar si ya tiene una instalación activa
-    const { data: existingInstallation } = await supabase
+    const { data: existingInstallations } = await supabase
       .from('pass_installations')
       .select('id')
       .eq('pass_id', pass.id)
       .eq('customer_id', customerId)
-      .single();
+      .limit(1);
+
+    const existingInstallation = existingInstallations?.[0];
 
     let installationId: string;
 
