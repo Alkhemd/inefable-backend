@@ -23,6 +23,7 @@ export class SupabaseAuthGuard implements CanActivate {
     const { data, error } = await this.supabaseService.client.auth.getUser(token);
 
     if (error || !data.user) {
+      console.error('SupabaseAuthGuard Error:', error?.message || 'No user found');
       throw new UnauthorizedException('Token inválido o expirado');
     }
 
