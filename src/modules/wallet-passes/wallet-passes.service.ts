@@ -92,7 +92,7 @@ export class WalletPassesService {
     }
   }
 
-  async generatePassUrl(customerId: string) {
+  async generatePassUrl(installationId: string) {
     const clientEmail = process.env.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL;
     let privateKey = process.env.GOOGLE_WALLET_PRIVATE_KEY;
     const issuerId = process.env.GOOGLE_WALLET_ISSUER_ID;
@@ -103,12 +103,20 @@ export class WalletPassesService {
       throw new InternalServerErrorException('Error interno de configuración de tarjetas.');
     }
 
-    // Obtener los detalles del negocio y pase desde la base de datos
+    // Obtener los detalles del negocio y pase desde la base de datos a través de la instalación
     const supabase = this.supabase.client;
+    const { data: installation } = await supabase
+      .from('pass_installations')
+      .select('customer_id')
+      .eq('id', installationId)
+      .single();
+
+    if (!installation) throw new InternalServerErrorException('Instalación no encontrada para generar pase');
+
     const { data: customer } = await supabase
       .from('customers')
       .select('business_id')
-      .eq('id', customerId)
+      .eq('id', installation.customer_id)
       .single();
 
     if (!customer) throw new InternalServerErrorException('Cliente no encontrado para generar pase');
@@ -142,7 +150,7 @@ export class WalletPassesService {
       scopes: ['https://www.googleapis.com/auth/wallet_object.issuer'],
     });
 
-    const objectId = `${issuerId}.${customerId}`;
+    const objectId = `${issuerId}.${installationId}`;
 
     const newObject = {
       id: objectId,
@@ -163,8 +171,8 @@ export class WalletPassesService {
       ],
       barcode: {
         type: 'QR_CODE',
-        value: customerId,
-        alternateText: customerId
+        value: installationId,
+        alternateText: installationId
       },
       cardTitle: {
         defaultValue: {
