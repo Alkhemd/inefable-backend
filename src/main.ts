@@ -14,7 +14,12 @@ async function bootstrap() {
 
   // Habilitar CORS para el Frontend/PWA
   app.enableCors({
-    origin: '*',
+    origin: [
+      'http://localhost:5173',
+      'https://inefable-frontend-yja4.vercel.app',
+      'https://inefable-frontend-yja4-eylians-projects.vercel.app',
+      /\.vercel\.app$/,   // Cualquier preview de Vercel
+    ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
