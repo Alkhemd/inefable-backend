@@ -10,11 +10,11 @@ export class ScannerService {
     
     const { employeeId, businessId } = cashierPayload;
 
-    // 1. Verificar que el pass_installation existe, está activo, y pertenece a este customer y negocio
+    // 1. Verificar que el pass_installation existe, está activo, y pertenece a este negocio
     const { data: installation, error: installationError } = await supabase
       .from('pass_installations')
       .select('id, passes!inner(business_id)')
-      .eq('customer_id', customerId)
+      .eq('id', customerId) // customerId here is actually the installation ID from the QR code
       .eq('is_removed', false)
       .eq('passes.business_id', businessId)
       .single();
