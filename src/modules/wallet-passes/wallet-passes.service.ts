@@ -104,7 +104,11 @@ export class WalletPassesService {
     }
 
     // Formatear llave privada para leer los saltos de línea correctamente desde .env
-    privateKey = privateKey.replace(/\\n/g, '\n');
+    // Manejar casos donde vengan con \n literal, comillas extra o saltos reales.
+    privateKey = privateKey
+      .replace(/\\n/g, '\n')
+      .replace(/^"|"$/g, '') // Quitar comillas si las tiene
+      .trim();
 
     const authClient = new JWT({
       email: clientEmail,
