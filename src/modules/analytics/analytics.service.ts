@@ -23,16 +23,7 @@ export class AnalyticsService {
     const businessId = await this.getBusinessId(userId);
 
     try {
-      // Pases activos (is_removed = false)
-      const { count: activePasses } = await this.supabase.client
-        .from('pass_installations')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_removed', false)
-        .eq('passes.business_id', businessId); // Note: esto requiere inner join o se hace via Pases. 
-        // Corrección: pass_installations no tiene business_id directo, debemos filtrar por passes
-        
-      // Supabase count con joined table requiere un workaround o hacer una vista.
-      // Mejor obtenemos los pases de este negocio primero
+      // Obtenemos los pases de este negocio primero
       const { data: passes } = await this.supabase.client
         .from('passes')
         .select('id')
@@ -123,8 +114,7 @@ export class AnalyticsService {
         id,
         stamp_count,
         created_at,
-        employees ( name ),
-        pass_installations ( device_platform )
+        employees ( name )
       `)
       .eq('business_id', businessId)
       .order('created_at', { ascending: false })

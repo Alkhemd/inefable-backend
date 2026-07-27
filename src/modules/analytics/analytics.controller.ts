@@ -10,16 +10,17 @@ export class AnalyticsController {
 
   @Get('kpis')
   async getKPIs(@CurrentUser() user: any) {
-    return this.analyticsService.getKPIs(user.sub);
+    return this.analyticsService.getKPIs(user.id);
   }
 
   @Get('employees')
   async getEmployeeRanking(@CurrentUser() user: any) {
-    return this.analyticsService.getEmployeeRanking(user.sub);
+    return this.analyticsService.getEmployeeRanking(user.id);
   }
 
   @Get('recent')
   async getRecentActivity(@CurrentUser() user: any) {
-    return this.analyticsService.getRecentActivity(user.sub);
+    return this.analyticsService.getRecentActivity(user.id);
   }
+
 }

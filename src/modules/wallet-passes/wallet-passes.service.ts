@@ -1,10 +1,96 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { JWT } from 'google-auth-library';
 import * as jwt from 'jsonwebtoken';
+import { SupabaseService } from '../../infrastructure/supabase/supabase.service';
+import { UpdatePassConfigDto } from './dto/update-pass-config.dto';
 
 @Injectable()
 export class WalletPassesService {
   private readonly logger = new Logger(WalletPassesService.name);
+
+  constructor(private readonly supabase: SupabaseService) {}
+
+  async getPassConfig(ownerUserId: string) {
+    const supabase = this.supabase.client;
+    
+    // Primero buscar el negocio del dueño
+    const { data: business } = await supabase
+      .from('businesses')
+      .select('id, name, logo_url')
+      .eq('owner_user_id', ownerUserId)
+      .single();
+
+    if (!business) {
+      throw new NotFoundException('Negocio no encontrado');
+    }
+
+    // Luego buscar el pase asociado a ese negocio
+    const { data: pass } = await supabase
+      .from('passes')
+      .select('*')
+      .eq('business_id', business.id)
+      .single();
+
+    return {
+      pass: pass || null,
+      business
+    };
+  }
+
+  async upsertPassConfig(ownerUserId: string, dto: UpdatePassConfigDto) {
+    const supabase = this.supabase.client;
+    
+    // 1. Obtener el business_id
+    const { data: business, error: businessError } = await this.supabase.client
+      .from('businesses')
+      .select('id')
+      .eq('owner_user_id', ownerUserId)
+      .single();
+
+    if (businessError || !business) {
+      throw new NotFoundException('Negocio no encontrado');
+    }
+
+    // 2. Comprobar si ya existe un pase
+    const { data: existingPass } = await supabase
+      .from('passes')
+      .select('id')
+      .eq('business_id', business.id)
+      .single();
+
+    if (existingPass) {
+      // Update
+      const { data, error } = await supabase
+        .from('passes')
+        .update({
+          background_color: dto.background_color,
+          foreground_color: dto.foreground_color,
+          description: dto.description,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingPass.id)
+        .select()
+        .single();
+        
+      if (error) throw new InternalServerErrorException('Error al actualizar el diseño del pase');
+      return data;
+    } else {
+      // Insert
+      const { data, error } = await supabase
+        .from('passes')
+        .insert({
+          business_id: business.id,
+          background_color: dto.background_color || '#2563EB',
+          foreground_color: dto.foreground_color || '#FFFFFF',
+          description: dto.description || 'Tarjeta de Lealtad'
+        })
+        .select()
+        .single();
+
+      if (error) throw new InternalServerErrorException('Error al crear el diseño del pase');
+      return data;
+    }
+  }
 
   async generatePassUrl(customerId: string) {
     const clientEmail = process.env.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL;

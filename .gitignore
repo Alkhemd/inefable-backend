@@ -38,6 +38,12 @@ coverage/
 # Archivos temporales o de scripts locales
 test-quick.ts
 test-quick.js
+test-auth.ts
+test-employees.ts
+test-endpoints.ts
+test-full-kpis.ts
+test-kpis.ts
+test-query.ts
 extract-types.js
 .temp/
 temp/

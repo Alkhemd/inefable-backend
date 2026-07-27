@@ -2,6 +2,7 @@ import { Injectable, InternalServerErrorException, NotFoundException } from '@ne
 import { SupabaseService } from '../../infrastructure/supabase/supabase.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import * as bcrypt from 'bcrypt';
+import * as jwt from 'jsonwebtoken';
 
 @Injectable()
 export class EmployeesService {
@@ -112,17 +113,32 @@ export class EmployeesService {
       throw new NotFoundException('No hay cajeros activos para este negocio.');
     }
 
-    // Verificar el PIN contra los hashes (dado que no sabemos cuál cajero es, iteramos)
+    const jwtSecret = process.env.SUPABASE_JWT_SECRET;
+    if (!jwtSecret) {
+      throw new InternalServerErrorException('Configuración de seguridad incompleta en el servidor.');
+    }
+
+    // Verificar el PIN contra los hashes
     for (const employee of employees) {
       const isMatch = await bcrypt.compare(pin, employee.pin_hash);
       if (isMatch) {
-        // Credenciales válidas
+        // Credenciales válidas - Generar JWT
+        const payload = {
+          sub: employee.id,
+          type: 'cashier',
+          businessId,
+          name: employee.name,
+        };
+
+        // El token expirará en 12 horas para que el cajero no tenga que loguearse a cada rato en su turno
+        const token = jwt.sign(payload, jwtSecret, { expiresIn: '12h' });
+
         return {
           employeeId: employee.id,
           name: employee.name,
           businessId,
+          token,
           message: 'Login exitoso',
-          // NOTA: Aquí generaríamos un JWT interno para el cajero en la vida real.
         };
       }
     }

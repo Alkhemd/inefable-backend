@@ -1,0 +1,88 @@
+import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { SupabaseService } from '../../infrastructure/supabase/supabase.service';
+
+@Injectable()
+export class ScannerService {
+  constructor(private readonly supabase: SupabaseService) {}
+
+  async addStamp(cashierPayload: any, customerId: string) {
+    const supabase = this.supabase.client;
+    
+    const { employeeId, businessId } = cashierPayload;
+
+    // 1. Verificar que el pass_installation existe, está activo, y pertenece a este customer y negocio
+    const { data: installation, error: installationError } = await supabase
+      .from('pass_installations')
+      .select('id, passes!inner(business_id)')
+      .eq('customer_id', customerId)
+      .eq('is_removed', false)
+      .eq('passes.business_id', businessId)
+      .single();
+
+    if (installationError || !installation) {
+      throw new NotFoundException('El cliente no tiene una tarjeta instalada para este negocio o el código es inválido.');
+    }
+
+    // 2. Obtener el programa de lealtad activo para saber la meta
+    const { data: loyaltyProgram, error: loyaltyError } = await supabase
+      .from('loyalty_programs')
+      .select('stamp_goal')
+      .eq('business_id', businessId)
+      .eq('is_active', true)
+      .single();
+      
+    if (loyaltyError || !loyaltyProgram) {
+      throw new NotFoundException('Este negocio no tiene un programa de lealtad activo.');
+    }
+
+    const required = loyaltyProgram.stamp_goal;
+
+    // Para saber cuántos sellos lleva, los contamos:
+    const { count: allStampsCount } = await supabase
+      .from('stamp_transactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('installation_id', installation.id);
+
+    const { count: redemptionsCount } = await supabase
+      .from('redemptions')
+      .select('*', { count: 'exact', head: true })
+      .eq('installation_id', installation.id);
+      
+    const stampsCount = allStampsCount || 0;
+    const redsCount = redemptionsCount || 0;
+
+    // Sellos actuales (activos) antes de insertar
+    const currentActiveStamps = stampsCount - (redsCount * required);
+
+    // 3. Registrar el sello
+    const { data: stamp, error: stampError } = await supabase
+      .from('stamp_transactions')
+      .insert({
+        installation_id: installation.id,
+        business_id: businessId,
+        employee_id: employeeId,
+        stamp_count: currentActiveStamps + 1,
+        stamp_goal: required
+      })
+      .select('id, created_at')
+      .single();
+
+    if (stampError) {
+      throw new InternalServerErrorException('No se pudo registrar el sello.');
+    }
+
+    const newActiveStamps = currentActiveStamps + 1;
+
+    // ¿Premio desbloqueado con este último sello?
+    const prizeUnlocked = newActiveStamps >= required;
+
+    return {
+      message: 'Sello otorgado exitosamente',
+      stamp,
+      currentActiveStamps: newActiveStamps,
+      requiredStamps: required,
+      prizeUnlocked
+    };
+  }
+}
+

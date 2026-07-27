@@ -13,7 +13,11 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   // Habilitar CORS para el Frontend/PWA
-  app.enableCors();
+  app.enableCors({
+    origin: '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+  });
 
   // 0.0.0.0 es necesario para Serverless/Docker
   await app.listen(process.env.PORT ?? 3000, '0.0.0.0');

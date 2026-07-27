@@ -9,6 +9,8 @@ import { EmployeesModule } from './modules/employees/employees.module';
 import { WalletPassesModule } from './modules/wallet-passes/wallet-passes.module';
 import { LoyaltyEngineModule } from './modules/loyalty-engine/loyalty-engine.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { CustomersModule } from './modules/customers/customers.module';
+import { ScannerModule } from './modules/scanner/scanner.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     WalletPassesModule,
     LoyaltyEngineModule,
     AnalyticsModule,
+    CustomersModule,
+    ScannerModule,
   ],
   controllers: [AppController],
   providers: [AppService],
