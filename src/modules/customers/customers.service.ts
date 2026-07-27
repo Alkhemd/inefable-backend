@@ -136,7 +136,7 @@ export class CustomersService {
           pass_id: pass.id,
           customer_id: customerId,
           device_id: `web-${customerId}`, // Identificador único para registros vía web
-          platform: 'google_wallet',
+          platform: 'google',
         })
         .select('id')
         .single();
