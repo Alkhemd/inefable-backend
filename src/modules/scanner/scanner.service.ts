@@ -1,14 +1,20 @@
 import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../../infrastructure/supabase/supabase.service';
 
+import { WalletPassesService } from '../wallet-passes/wallet-passes.service';
+
 @Injectable()
 export class ScannerService {
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly walletPassesService: WalletPassesService
+  ) {}
 
   async addStamp(cashierPayload: any, customerId: string) {
     const supabase = this.supabase.client;
     
-    const { employeeId, businessId } = cashierPayload;
+    const businessId = cashierPayload.businessId;
+    const employeeId = cashierPayload.sub;
 
     // 1. Verificar que el pass_installation existe, está activo, y pertenece a este negocio
     const { data: installation, error: installationError } = await supabase
@@ -61,7 +67,7 @@ export class ScannerService {
         installation_id: installation.id,
         business_id: businessId,
         employee_id: employeeId,
-        stamp_count: currentActiveStamps + 1,
+        stamp_count: 1, // Siempre insertamos 1 sello por cada escaneo
         stamp_goal: required
       })
       .select('id, created_at')
@@ -72,6 +78,9 @@ export class ScannerService {
     }
 
     const newActiveStamps = currentActiveStamps + 1;
+
+    // Actualizar el pase en Google Wallet
+    await this.walletPassesService.updatePassObject(installation.id, newActiveStamps, required);
 
     // ¿Premio desbloqueado con este último sello?
     const prizeUnlocked = newActiveStamps >= required;

@@ -208,4 +208,52 @@ export class WalletPassesService {
       throw new InternalServerErrorException('No se pudo generar la tarjeta.');
     }
   }
+
+  async updatePassObject(installationId: string, currentStamps: number, stampGoal: number) {
+    const clientEmail = process.env.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL;
+    let privateKey = process.env.GOOGLE_WALLET_PRIVATE_KEY;
+    const issuerId = process.env.GOOGLE_WALLET_ISSUER_ID;
+
+    if (!clientEmail || !privateKey || !issuerId) {
+      this.logger.warn('Faltan variables de entorno de Google Wallet, no se actualizó el pase');
+      return;
+    }
+
+    privateKey = privateKey
+      .replace(/\\n/g, '\n')
+      .replace(/^"|"$/g, '')
+      .trim();
+
+    try {
+      const authClient = new JWT({
+        email: clientEmail,
+        key: privateKey,
+        scopes: ['https://www.googleapis.com/auth/wallet_object.issuer'],
+      });
+
+      const objectId = `${issuerId}.${installationId}`;
+      const url = `https://walletobjects.googleapis.com/walletobjects/v1/genericObject/${objectId}`;
+      
+      const payload = {
+        textModulesData: [
+          {
+            header: 'Sellos Acumulados',
+            body: `${currentStamps} / ${stampGoal}`,
+            id: 'stamps_module'
+          }
+        ]
+      };
+
+      await authClient.request({
+        url,
+        method: 'PATCH',
+        data: payload
+      });
+
+      this.logger.log(`Pase de Google Wallet ${objectId} actualizado con ${currentStamps} sellos.`);
+    } catch (error: any) {
+      this.logger.error('Error actualizando pase en Google Wallet: ' + (error.response?.data?.message || error.message));
+      // No lanzamos error para no interrumpir el flujo del escáner en caso de que Google falle
+    }
+  }
 }
