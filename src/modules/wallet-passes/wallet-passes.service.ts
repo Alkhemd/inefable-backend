@@ -111,7 +111,9 @@ export class WalletPassesService {
       .eq('id', installationId)
       .single();
 
-    if (!installation) throw new InternalServerErrorException('Instalación no encontrada para generar pase');
+    if (!installation || !installation.customer_id) {
+      throw new InternalServerErrorException('Instalación no encontrada para generar pase');
+    }
 
     const { data: customer } = await supabase
       .from('customers')
