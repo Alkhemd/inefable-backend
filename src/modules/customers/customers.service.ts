@@ -141,7 +141,7 @@ export class CustomersService {
 
       if (installationError || !newInstallation) {
         this.logger.error(installationError);
-        throw new InternalServerErrorException('Error al crear la instalación del pase.');
+        throw new InternalServerErrorException(`Error al crear la instalación del pase: ${installationError?.message || 'Desconocido'}`);
       }
       installationId = newInstallation.id;
     }
