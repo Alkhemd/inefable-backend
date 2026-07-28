@@ -26,6 +26,7 @@
     "@nestjs/mapped-types": "^2.1.1",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-fastify": "^11.1.28",
+    "@nestjs/throttler": "^6.5.0",
     "@supabase/supabase-js": "^2.110.8",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",

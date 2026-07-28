@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { SupabaseAuthGuard } from '../../core/guards/supabase-auth.guard';
@@ -26,6 +27,7 @@ export class EmployeesController {
     return this.employeesService.deactivateEmployee(user.id, employeeId);
   }
 
+  @Throttle({ login: { limit: 5, ttl: 60000 } })
   @Post('login')
   async loginEmployee(@Body('businessId') businessId: string, @Body('pin') pin: string) {
     return this.employeesService.loginEmployee(businessId, pin);
