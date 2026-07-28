@@ -21,6 +21,7 @@ async function bootstrap() {
         'https://inefable-frontend-yja4.vercel.app',
         'https://inefable-frontend-yja4-eylians-projects.vercel.app',
         'https://inefable-frontend-yja4-git-main-eylians-projects.vercel.app',
+        'https://inefable-frontend.vercel.app',
       ];
 
       if (!origin) return callback(null, true);
