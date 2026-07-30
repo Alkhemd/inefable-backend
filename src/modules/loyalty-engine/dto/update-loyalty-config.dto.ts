@@ -1,4 +1,11 @@
-import { IsNumber, IsString, IsOptional, IsBoolean, Min, Max } from 'class-validator';
+import {
+  IsNumber,
+  IsString,
+  IsOptional,
+  IsBoolean,
+  Min,
+  Max,
+} from 'class-validator';
 
 export class UpdateLoyaltyConfigDto {
   @IsNumber()

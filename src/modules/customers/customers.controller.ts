@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import type { User } from '@supabase/supabase-js';
 import { CustomersService } from './customers.service';
 import { SupabaseAuthGuard } from '../../core/guards/supabase-auth.guard';
 import { CurrentUser } from '../../core/decorators/current-user.decorator';
@@ -11,7 +12,7 @@ export class CustomersController {
   // Endpoint PROTEGIDO: solo para merchants autenticados
   @UseGuards(SupabaseAuthGuard)
   @Get()
-  async getCustomers(@CurrentUser() user: any) {
+  async getCustomers(@CurrentUser() user: User) {
     return this.customersService.getCustomersByBusinessOwner(user.id);
   }
 

@@ -7,6 +7,6 @@ import { WalletPassesModule } from '../wallet-passes/wallet-passes.module';
 @Module({
   imports: [WalletPassesModule],
   controllers: [ScannerController],
-  providers: [ScannerService]
+  providers: [ScannerService],
 })
 export class ScannerModule {}

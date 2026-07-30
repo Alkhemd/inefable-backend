@@ -1,4 +1,12 @@
-import { IsString, IsNotEmpty, IsEmail, IsOptional, IsEnum, IsUrl, IsNumber } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsEmail,
+  IsOptional,
+  IsEnum,
+  IsUrl,
+  IsNumber,
+} from 'class-validator';
 
 export class CreateMerchantDto {
   @IsString()
@@ -43,4 +51,8 @@ export class CreateMerchantDto {
   @IsString()
   @IsOptional()
   anti_fraud_mode?: string;
+
+  @IsString()
+  @IsOptional()
+  timezone?: string;
 }

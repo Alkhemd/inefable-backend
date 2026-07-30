@@ -1,4 +1,11 @@
-import { IsEmail, IsNotEmpty, IsString, IsUUID, IsOptional, Length } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  IsUUID,
+  IsOptional,
+  Length,
+} from 'class-validator';
 
 export class JoinProgramDto {
   @IsUUID()

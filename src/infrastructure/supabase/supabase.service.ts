@@ -1,9 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Database } from './database.types';
-import * as dotenv from 'dotenv';
-
-dotenv.config();
 
 @Injectable()
 export class SupabaseService implements OnModuleInit {
@@ -14,7 +11,9 @@ export class SupabaseService implements OnModuleInit {
     const supabaseKey = process.env.SUPABASE_KEY;
 
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Supabase URL or Key is missing in environment variables.');
+      throw new Error(
+        'Supabase URL or Key is missing in environment variables.',
+      );
     }
 
     // Usamos el Service Role Key para tener acceso administrativo desde el backend

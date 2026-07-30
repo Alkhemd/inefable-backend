@@ -4,6 +4,6 @@ import { LoyaltyEngineController } from './loyalty-engine.controller';
 
 @Module({
   providers: [LoyaltyEngineService],
-  controllers: [LoyaltyEngineController]
+  controllers: [LoyaltyEngineController],
 })
 export class LoyaltyEngineModule {}

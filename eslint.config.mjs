@@ -6,7 +6,8 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['eslint.config.mjs'],
+    // database.types.ts se regenera con `supabase gen types typescript`; nunca se edita a mano.
+    ignores: ['eslint.config.mjs', 'src/infrastructure/supabase/database.types.ts'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,

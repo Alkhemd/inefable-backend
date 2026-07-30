@@ -1,6 +1,14 @@
-import { Controller, Post, Body, Get, Patch, UseGuards, Ip } from '@nestjs/common';
+import {
+  Controller,
+  Body,
+  Get,
+  Patch,
+  UseGuards,
+  Ip,
+  Headers,
+} from '@nestjs/common';
+import type { User } from '@supabase/supabase-js';
 import { LoyaltyEngineService } from './loyalty-engine.service';
-import { ScanPassDto } from './dto/scan-pass.dto';
 import { UpdateLoyaltyConfigDto } from './dto/update-loyalty-config.dto';
 import { SupabaseAuthGuard } from '../../core/guards/supabase-auth.guard';
 import { CurrentUser } from '../../core/decorators/current-user.decorator';
@@ -11,25 +19,23 @@ export class LoyaltyEngineController {
 
   @UseGuards(SupabaseAuthGuard)
   @Get('config')
-  async getConfig(@CurrentUser() user: any) {
+  async getConfig(@CurrentUser() user: User) {
     return this.loyaltyEngineService.getLoyaltyConfig(user.id);
   }
 
   @UseGuards(SupabaseAuthGuard)
   @Patch('config')
-  async updateConfig(@CurrentUser() user: any, @Body() dto: UpdateLoyaltyConfigDto) {
-    return this.loyaltyEngineService.upsertLoyaltyConfig(user.id, dto);
-  }
-
-  @Post('scan')
-  @UseGuards(SupabaseAuthGuard)
-  async scanPass(@Body() dto: ScanPassDto, @CurrentUser() user: any, @Ip() ip: string) {
-    return this.loyaltyEngineService.processScan(
-      dto.customerId,
-      user.id, // ID del cajero logueado
+  async updateConfig(
+    @CurrentUser() user: User,
+    @Body() dto: UpdateLoyaltyConfigDto,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string,
+  ) {
+    return this.loyaltyEngineService.upsertLoyaltyConfig(
+      user.id,
+      dto,
       ip,
-      dto.lat,
-      dto.lng
+      userAgent,
     );
   }
 }

@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { SupabaseService } from '../../infrastructure/supabase/supabase.service';
 import { JoinProgramDto } from './dto/join-program.dto';
 import { WalletPassesService } from '../wallet-passes/wallet-passes.service';
@@ -20,6 +25,7 @@ export class CustomersService {
       .from('businesses')
       .select('id')
       .eq('owner_user_id', ownerUserId)
+      .is('deleted_at', null)
       .single();
 
     if (businessError || !business) {
@@ -30,12 +36,14 @@ export class CustomersService {
     // Hacemos el JOIN con customers y con los sellos.
     const { data: installations, error } = await supabase
       .from('pass_installations')
-      .select(`
+      .select(
+        `
         installed_at,
         customers!inner(id, first_name, last_name, email, phone_number),
         passes!inner(business_id),
         stamp_transactions(stamp_count, is_valid)
-      `)
+      `,
+      )
       .eq('passes.business_id', business.id);
 
     if (error) {
@@ -45,8 +53,10 @@ export class CustomersService {
 
     // 3. Mapear la respuesta para el frontend
     const formattedCustomers = installations.map((inst: any) => {
-      const customer = Array.isArray(inst.customers) ? inst.customers[0] : inst.customers;
-      
+      const customer = Array.isArray(inst.customers)
+        ? inst.customers[0]
+        : inst.customers;
+
       // Sumar todos los sellos válidos
       const totalStamps = (inst.stamp_transactions || [])
         .filter((stamp: any) => stamp.is_valid !== false)
@@ -68,6 +78,20 @@ export class CustomersService {
 
   async joinLoyaltyProgram(dto: JoinProgramDto) {
     const supabase = this.supabase.client;
+
+    // 0. El negocio debe existir y no estar eliminado (soft-delete)
+    const { data: business } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('id', dto.businessId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!business) {
+      throw new NotFoundException(
+        'Negocio no encontrado o sin tarjeta configurada aún.',
+      );
+    }
 
     // 1. Verificar que el negocio exista y tenga un pase configurado
     const { data: pass, error: passError } = await supabase
@@ -108,7 +132,9 @@ export class CustomersService {
 
       if (customerError || !newCustomer) {
         this.logger.error(customerError);
-        throw new InternalServerErrorException('Error al registrar al cliente.');
+        throw new InternalServerErrorException(
+          'Error al registrar al cliente.',
+        );
       }
       customerId = newCustomer.id;
     }
@@ -143,13 +169,16 @@ export class CustomersService {
 
       if (installationError || !newInstallation) {
         this.logger.error(installationError);
-        throw new InternalServerErrorException(`Error al crear la instalación del pase: ${installationError?.message || 'Desconocido'}`);
+        throw new InternalServerErrorException(
+          `Error al crear la instalación del pase: ${installationError?.message || 'Desconocido'}`,
+        );
       }
       installationId = newInstallation.id;
     }
 
     // 5. Generar el JWT de Google Wallet usando el installationId como código QR único
-    const { url } = await this.walletPassesService.generatePassUrl(installationId);
+    const { url } =
+      await this.walletPassesService.generatePassUrl(installationId);
 
     return {
       walletUrl: url,

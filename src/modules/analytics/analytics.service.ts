@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { SupabaseService } from '../../infrastructure/supabase/supabase.service';
 
 @Injectable()
@@ -10,10 +14,13 @@ export class AnalyticsService {
       .from('businesses')
       .select('id')
       .eq('owner_user_id', userId)
+      .is('deleted_at', null)
       .single();
 
     if (!business) {
-      throw new NotFoundException('No se encontró un negocio asociado a este usuario.');
+      throw new NotFoundException(
+        'No se encontró un negocio asociado a este usuario.',
+      );
     }
     return business.id;
   }
@@ -28,8 +35,8 @@ export class AnalyticsService {
         .from('passes')
         .select('id')
         .eq('business_id', businessId);
-        
-      const passIds = passes?.map(p => p.id) || [];
+
+      const passIds = passes?.map((p) => p.id) || [];
 
       // Pases activos
       const { count: activePassesCount } = await this.supabase.client
@@ -45,7 +52,8 @@ export class AnalyticsService {
         .eq('business_id', businessId)
         .eq('is_valid', true);
 
-      const totalStamps = stampsData?.reduce((acc, s) => acc + s.stamp_count, 0) || 0;
+      const totalStamps =
+        stampsData?.reduce((acc, s) => acc + s.stamp_count, 0) || 0;
 
       // Canjes totales
       const { count: totalRedemptions } = await this.supabase.client
@@ -59,8 +67,11 @@ export class AnalyticsService {
         totalStamps,
         totalRedemptions: totalRedemptions || 0,
       };
-    } catch (error: any) {
-      throw new InternalServerErrorException('Error al obtener KPIs: ' + error.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new InternalServerErrorException(
+        'Error al obtener KPIs: ' + message,
+      );
     }
   }
 
@@ -84,13 +95,13 @@ export class AnalyticsService {
     const rankingMap = new Map<string, { name: string; totalStamps: number }>();
 
     // Inicializar mapa
-    employees.forEach(emp => {
+    employees.forEach((emp) => {
       rankingMap.set(emp.id, { name: emp.name, totalStamps: 0 });
     });
 
     // Sumar sellos
     if (stamps) {
-      stamps.forEach(stamp => {
+      stamps.forEach((stamp) => {
         if (stamp.employee_id && rankingMap.has(stamp.employee_id)) {
           const current = rankingMap.get(stamp.employee_id)!;
           current.totalStamps += stamp.stamp_count;
@@ -99,7 +110,9 @@ export class AnalyticsService {
     }
 
     // Convertir a array y ordenar
-    const ranking = Array.from(rankingMap.values()).sort((a, b) => b.totalStamps - a.totalStamps);
+    const ranking = Array.from(rankingMap.values()).sort(
+      (a, b) => b.totalStamps - a.totalStamps,
+    );
 
     return ranking;
   }
@@ -110,18 +123,22 @@ export class AnalyticsService {
 
     const { data: recentStamps, error } = await this.supabase.client
       .from('stamp_transactions')
-      .select(`
+      .select(
+        `
         id,
         stamp_count,
         created_at,
         employees ( name )
-      `)
+      `,
+      )
       .eq('business_id', businessId)
       .order('created_at', { ascending: false })
       .limit(10);
 
     if (error) {
-      throw new InternalServerErrorException('Error al obtener actividad reciente: ' + error.message);
+      throw new InternalServerErrorException(
+        'Error al obtener actividad reciente: ' + error.message,
+      );
     }
 
     return recentStamps;

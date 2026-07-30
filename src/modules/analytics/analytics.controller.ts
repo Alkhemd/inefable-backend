@@ -1,4 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
+import type { User } from '@supabase/supabase-js';
 import { AnalyticsService } from './analytics.service';
 import { SupabaseAuthGuard } from '../../core/guards/supabase-auth.guard';
 import { CurrentUser } from '../../core/decorators/current-user.decorator';
@@ -9,18 +10,17 @@ export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
   @Get('kpis')
-  async getKPIs(@CurrentUser() user: any) {
+  async getKPIs(@CurrentUser() user: User) {
     return this.analyticsService.getKPIs(user.id);
   }
 
   @Get('employees')
-  async getEmployeeRanking(@CurrentUser() user: any) {
+  async getEmployeeRanking(@CurrentUser() user: User) {
     return this.analyticsService.getEmployeeRanking(user.id);
   }
 
   @Get('recent')
-  async getRecentActivity(@CurrentUser() user: any) {
+  async getRecentActivity(@CurrentUser() user: User) {
     return this.analyticsService.getRecentActivity(user.id);
   }
-
 }

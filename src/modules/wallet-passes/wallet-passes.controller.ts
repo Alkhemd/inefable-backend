@@ -1,4 +1,14 @@
-import { Controller, Post, Body, Get, Patch, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Patch,
+  UseGuards,
+  Ip,
+  Headers,
+} from '@nestjs/common';
+import type { User } from '@supabase/supabase-js';
 import { WalletPassesService } from './wallet-passes.service';
 import { GeneratePassDto } from './dto/generate-pass.dto';
 import { UpdatePassConfigDto } from './dto/update-pass-config.dto';
@@ -11,14 +21,24 @@ export class WalletPassesController {
 
   @UseGuards(SupabaseAuthGuard)
   @Get('config')
-  async getConfig(@CurrentUser() user: any) {
+  async getConfig(@CurrentUser() user: User) {
     return this.walletPassesService.getPassConfig(user.id);
   }
 
   @UseGuards(SupabaseAuthGuard)
   @Patch('config')
-  async updateConfig(@CurrentUser() user: any, @Body() dto: UpdatePassConfigDto) {
-    return this.walletPassesService.upsertPassConfig(user.id, dto);
+  async updateConfig(
+    @CurrentUser() user: User,
+    @Body() dto: UpdatePassConfigDto,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string,
+  ) {
+    return this.walletPassesService.upsertPassConfig(
+      user.id,
+      dto,
+      ip,
+      userAgent,
+    );
   }
 
   @Post('generate')

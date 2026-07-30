@@ -1,98 +1,107 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Inefable Wallet — Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API en NestJS para **Inefable Wallet**, un sistema de fidelización (tarjetas de sellos) que conecta negocios (merchants) con sus clientes finales a través de pases de Google Wallet, con antifraude híbrido (IP + geocerca) para el escaneo de sellos.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Stack
 
-## Description
+- **Runtime:** Node.js + [NestJS](https://nestjs.com/) 11 sobre **Fastify** (no Express)
+- **Lenguaje:** TypeScript estricto (`strictNullChecks`, sin `noImplicitAny`)
+- **Base de datos / Auth:** [Supabase](https://supabase.com/) (PostgreSQL + Auth delegada), vía `@supabase/supabase-js` con Service Role Key
+- **Wallet:** Google Wallet API (`google-auth-library` + JWT firmado con `jsonwebtoken`)
+- **Validación:** `class-validator` / `class-transformer` (DTOs en cada endpoint)
+- **Rate limiting:** `@nestjs/throttler` (global)
+- **Docs de API:** `@nestjs/swagger`, expuesta en `/api/docs` solo fuera de `production`
+- **Tests:** Jest
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+> Tecnologías explícitamente **prohibidas** en este proyecto: Prisma, Redis, colas locales (BullMQ), JWT/bcrypt manual para sesiones de usuario final — todo eso lo delega el proyecto a Supabase. Ver [`AGENTS.md`](./AGENTS.md).
 
-## Project setup
+## Arquitectura
 
-```bash
-$ npm install
+Organización por *feature slices* (`src/modules/*`), con una capa `core/` (guards, decoradores) y `infrastructure/` (clientes externos) compartidas:
+
+```
+src/
+├── core/
+│   ├── decorators/       # @CurrentUser()
+│   └── guards/           # SupabaseAuthGuard (dueños), CashierAuthGuard (cajeros)
+├── infrastructure/
+│   └── supabase/         # SupabaseService (cliente global), AuditLogService, database.types.ts
+└── modules/
+    ├── auth/              # GET /auth/me
+    ├── merchants/         # Perfil del negocio + configuración antifraude
+    ├── employees/         # Alta/baja de cajeros, login por PIN
+    ├── wallet-passes/      # Diseño del pase + emisión de tarjetas Google Wallet
+    ├── loyalty-engine/     # Configuración del programa de lealtad (GET/PATCH /loyalty-engine/config)
+    ├── analytics/          # KPIs, ranking de cajeros, actividad reciente
+    ├── customers/          # Registro público de clientes finales (QR)
+    ├── scanner/            # Flujo real del cajero: dar sello y canjear premio
+    └── admin/              # Panel Super Admin de Inefable: control global de negocios
 ```
 
-## Compile and run the project
+Reglas no negociables (más detalle en [`AGENTS.md`](./AGENTS.md) y [`docs/`](./docs)):
+
+1. **Multi-tenant:** toda query a Supabase se filtra por `business_id`.
+2. **Antifraude en `scanner`:** `POST /scanner/stamp` valida IP y/o geocerca (fórmula de Haversine) según `businesses.anti_fraud_mode` antes de otorgar un sello.
+3. **Las llaves de Google Wallet nunca se exponen** — solo viven en variables de entorno, leídas dentro del service de `wallet-passes`.
+4. **El único flujo de escaneo en producción es `scanner`:** `POST /scanner/stamp` (dar sello) y `POST /scanner/redeem` (canjear premio), ambos autenticados con el JWT del cajero (`CashierAuthGuard`). El endpoint `loyalty-engine/scan` que existió durante el desarrollo temprano (pruebas desde el dashboard del dueño) se eliminó — confirmado que el frontend nunca lo consumió.
+5. **El login de cajero exige horario configurado:** `POST /employees/login` rechaza a cualquier cajero sin `shift_start`/`shift_end` asignados (`PATCH /employees/:id/schedule`, solo el dueño), y también fuera de su horario. El JWT resultante expira exactamente al final del turno (no 12h fijas), calculado en la zona horaria del negocio (`businesses.timezone`).
+
+## Requisitos
+
+- Node.js 20+
+- Un proyecto de Supabase (URL + Service Role Key)
+- Credenciales de una Service Account de Google Wallet (Issuer ID, Class ID, email y llave privada)
+
+## Instalación
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
 ```
 
-## Run tests
+Crea un archivo `.env` en la raíz con:
+
+```env
+PORT=3000
+
+# Supabase
+SUPABASE_URL="https://[tu-proyecto].supabase.co"
+SUPABASE_KEY="eyJhbG..."              # Service Role Key
+SUPABASE_JWT_SECRET="..."             # Usado para firmar/validar el JWT propio de los cajeros
+SUPER_ADMIN_USER_ID="..."             # auth.users.id del Super Admin de Inefable (panel /admin)
+
+# Google Wallet
+GOOGLE_WALLET_ISSUER_ID="..."
+GOOGLE_WALLET_CLASS_ID="..."
+GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL="...@...iam.gserviceaccount.com"
+GOOGLE_WALLET_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+
+> El esquema completo de la base de datos (tablas, columnas, relaciones) está documentado en [`docs/database-schema.md`](./docs/database-schema.md).
+
+## Comandos
 
 ```bash
-# unit tests
-$ npm run test
+npm run start:dev    # servidor local con recarga automática
+npm run build        # compila a dist/ (nest build)
+npm run start:prod    # corre el build compilado
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run lint          # ESLint + Prettier (--fix)
+npm run test          # tests unitarios (Jest)
+npm run test:e2e      # tests end-to-end
+npm run test:cov      # cobertura
 ```
 
-## Deployment
+Con el servidor corriendo en desarrollo, la documentación interactiva de la API está en `http://localhost:3000/api/docs`.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Convenciones
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+- `camelCase` para variables/métodos, `PascalCase` para clases/DTOs/interfaces.
+- Los tests viven al lado del archivo que prueban (`x.service.ts` → `x.service.spec.ts`).
+- Toda entrada de usuario se valida con DTOs + `class-validator`; los controladores solo enrutan, la lógica va en los Services.
+- Antes de una tarea no trivial: proponer un plan y esperar OK (ver [`AGENTS.md`](./AGENTS.md) para el flujo de trabajo completo).
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+## Documentación adicional
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- [`AGENTS.md`](./AGENTS.md) — reglas de trabajo, prohibiciones y convenciones del proyecto.
+- [`docs/`](./docs) — esquema de base de datos y memoria técnica por feature (auth, merchants, employees, wallet-passes, loyalty-engine, analytics, antifraude).
+- [`spec/`](./spec) — constitución del proyecto (misión, stack, roadmap) y specs/plans/tasks originales por feature.

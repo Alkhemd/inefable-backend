@@ -1,6 +1,6 @@
 import { IsString, IsNotEmpty, IsNumber, IsOptional } from 'class-validator';
 
-export class ScanPassDto {
+export class AddStampDto {
   @IsString()
   @IsNotEmpty()
   customerId: string;

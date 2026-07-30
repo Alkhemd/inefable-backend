@@ -13,6 +13,7 @@ import { LoyaltyEngineModule } from './modules/loyalty-engine/loyalty-engine.mod
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { ScannerModule } from './modules/scanner/scanner.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { ScannerModule } from './modules/scanner/scanner.module';
     AnalyticsModule,
     CustomersModule,
     ScannerModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [

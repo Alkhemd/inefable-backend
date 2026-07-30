@@ -1,23 +1,33 @@
-import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { JWT } from 'google-auth-library';
 import * as jwt from 'jsonwebtoken';
 import { SupabaseService } from '../../infrastructure/supabase/supabase.service';
+import { AuditLogService } from '../../infrastructure/supabase/audit-log.service';
 import { UpdatePassConfigDto } from './dto/update-pass-config.dto';
 
 @Injectable()
 export class WalletPassesService {
   private readonly logger = new Logger(WalletPassesService.name);
 
-  constructor(private readonly supabase: SupabaseService) {}
+  constructor(
+    private readonly supabase: SupabaseService,
+    private readonly auditLog: AuditLogService,
+  ) {}
 
   async getPassConfig(ownerUserId: string) {
     const supabase = this.supabase.client;
-    
+
     // Primero buscar el negocio del dueño
     const { data: business } = await supabase
       .from('businesses')
       .select('id, name, logo_url')
       .eq('owner_user_id', ownerUserId)
+      .is('deleted_at', null)
       .single();
 
     if (!business) {
@@ -33,18 +43,24 @@ export class WalletPassesService {
 
     return {
       pass: pass || null,
-      business
+      business,
     };
   }
 
-  async upsertPassConfig(ownerUserId: string, dto: UpdatePassConfigDto) {
+  async upsertPassConfig(
+    ownerUserId: string,
+    dto: UpdatePassConfigDto,
+    ip?: string,
+    userAgent?: string,
+  ) {
     const supabase = this.supabase.client;
-    
+
     // 1. Obtener el business_id
     const { data: business, error: businessError } = await this.supabase.client
       .from('businesses')
       .select('id')
       .eq('owner_user_id', ownerUserId)
+      .is('deleted_at', null)
       .single();
 
     if (businessError || !business) {
@@ -54,7 +70,7 @@ export class WalletPassesService {
     // 2. Comprobar si ya existe un pase
     const { data: existingPass } = await supabase
       .from('passes')
-      .select('id')
+      .select('*')
       .eq('business_id', business.id)
       .single();
 
@@ -66,13 +82,28 @@ export class WalletPassesService {
           background_color: dto.background_color,
           foreground_color: dto.foreground_color,
           description: dto.description,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .eq('id', existingPass.id)
         .select()
         .single();
-        
-      if (error) throw new InternalServerErrorException('Error al actualizar el diseño del pase');
+
+      if (error)
+        throw new InternalServerErrorException(
+          'Error al actualizar el diseño del pase',
+        );
+
+      await this.auditLog.log({
+        actorId: ownerUserId,
+        action: 'pass_config_updated',
+        entityType: 'passes',
+        entityId: data.id,
+        oldValue: existingPass,
+        newValue: data,
+        ip,
+        userAgent,
+      });
+
       return data;
     } else {
       // Insert
@@ -82,12 +113,26 @@ export class WalletPassesService {
           business_id: business.id,
           background_color: dto.background_color || '#2563EB',
           foreground_color: dto.foreground_color || '#FFFFFF',
-          description: dto.description || 'Tarjeta de Lealtad'
+          description: dto.description || 'Tarjeta de Lealtad',
         })
         .select()
         .single();
 
-      if (error) throw new InternalServerErrorException('Error al crear el diseño del pase');
+      if (error)
+        throw new InternalServerErrorException(
+          'Error al crear el diseño del pase',
+        );
+
+      await this.auditLog.log({
+        actorId: ownerUserId,
+        action: 'pass_config_created',
+        entityType: 'passes',
+        entityId: data.id,
+        newValue: data,
+        ip,
+        userAgent,
+      });
+
       return data;
     }
   }
@@ -100,7 +145,9 @@ export class WalletPassesService {
 
     if (!clientEmail || !privateKey || !issuerId || !classId) {
       this.logger.error('Faltan variables de entorno de Google Wallet');
-      throw new InternalServerErrorException('Error interno de configuración de tarjetas.');
+      throw new InternalServerErrorException(
+        'Error interno de configuración de tarjetas.',
+      );
     }
 
     // Obtener los detalles del negocio y pase desde la base de datos a través de la instalación
@@ -112,7 +159,9 @@ export class WalletPassesService {
       .single();
 
     if (!installation || !installation.customer_id) {
-      throw new InternalServerErrorException('Instalación no encontrada para generar pase');
+      throw new InternalServerErrorException(
+        'Instalación no encontrada para generar pase',
+      );
     }
 
     const { data: customer } = await supabase
@@ -121,13 +170,23 @@ export class WalletPassesService {
       .eq('id', installation.customer_id)
       .single();
 
-    if (!customer) throw new InternalServerErrorException('Cliente no encontrado para generar pase');
+    if (!customer)
+      throw new InternalServerErrorException(
+        'Cliente no encontrado para generar pase',
+      );
 
     const { data: business } = await supabase
       .from('businesses')
       .select('name')
       .eq('id', customer.business_id)
+      .is('deleted_at', null)
       .single();
+
+    if (!business) {
+      throw new NotFoundException(
+        'Este negocio ya no está activo en la plataforma.',
+      );
+    }
 
     const { data: pass } = await supabase
       .from('passes')
@@ -135,7 +194,7 @@ export class WalletPassesService {
       .eq('business_id', customer.business_id)
       .single();
 
-    const businessName = business?.name || 'Tarjeta de Lealtad';
+    const businessName = business.name || 'Tarjeta de Lealtad';
     const passDescription = pass?.description || 'Tarjeta de Lealtad';
     const hexBackgroundColor = pass?.background_color || '#2563EB';
 
@@ -163,31 +222,31 @@ export class WalletPassesService {
         {
           header: businessName,
           body: '¡Escanea para ganar sellos!',
-          id: 'info_module'
+          id: 'info_module',
         },
         {
           header: 'Sellos Acumulados',
           body: `0 / 10`,
-          id: 'stamps_module'
-        }
+          id: 'stamps_module',
+        },
       ],
       barcode: {
         type: 'QR_CODE',
         value: installationId,
-        alternateText: installationId
+        alternateText: installationId,
       },
       cardTitle: {
         defaultValue: {
           language: 'es-MX',
-          value: passDescription
-        }
+          value: passDescription,
+        },
       },
       header: {
         defaultValue: {
           language: 'es-MX',
-          value: businessName
-        }
-      }
+          value: businessName,
+        },
+      },
     };
 
     const claims = {
@@ -196,33 +255,37 @@ export class WalletPassesService {
       origins: [],
       typ: 'savetowallet',
       payload: {
-        genericObjects: [newObject]
-      }
+        genericObjects: [newObject],
+      },
     };
 
     try {
       const token = jwt.sign(claims, privateKey, { algorithm: 'RS256' });
       return { url: `https://pay.google.com/gp/v/save/${token}` };
-    } catch (error: any) {
-      this.logger.error('Error firmando JWT: ' + error.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error('Error firmando JWT: ' + message);
       throw new InternalServerErrorException('No se pudo generar la tarjeta.');
     }
   }
 
-  async updatePassObject(installationId: string, currentStamps: number, stampGoal: number) {
+  async updatePassObject(
+    installationId: string,
+    currentStamps: number,
+    stampGoal: number,
+  ) {
     const clientEmail = process.env.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL;
     let privateKey = process.env.GOOGLE_WALLET_PRIVATE_KEY;
     const issuerId = process.env.GOOGLE_WALLET_ISSUER_ID;
 
     if (!clientEmail || !privateKey || !issuerId) {
-      this.logger.warn('Faltan variables de entorno de Google Wallet, no se actualizó el pase');
+      this.logger.warn(
+        'Faltan variables de entorno de Google Wallet, no se actualizó el pase',
+      );
       return;
     }
 
-    privateKey = privateKey
-      .replace(/\\n/g, '\n')
-      .replace(/^"|"$/g, '')
-      .trim();
+    privateKey = privateKey.replace(/\\n/g, '\n').replace(/^"|"$/g, '').trim();
 
     try {
       const authClient = new JWT({
@@ -233,26 +296,36 @@ export class WalletPassesService {
 
       const objectId = `${issuerId}.${installationId}`;
       const url = `https://walletobjects.googleapis.com/walletobjects/v1/genericObject/${objectId}`;
-      
+
       const payload = {
         textModulesData: [
           {
             header: 'Sellos Acumulados',
             body: `${currentStamps} / ${stampGoal}`,
-            id: 'stamps_module'
-          }
-        ]
+            id: 'stamps_module',
+          },
+        ],
       };
 
       await authClient.request({
         url,
         method: 'PATCH',
-        data: payload
+        data: payload,
       });
 
-      this.logger.log(`Pase de Google Wallet ${objectId} actualizado con ${currentStamps} sellos.`);
-    } catch (error: any) {
-      this.logger.error('Error actualizando pase en Google Wallet: ' + (error.response?.data?.message || error.message));
+      this.logger.log(
+        `Pase de Google Wallet ${objectId} actualizado con ${currentStamps} sellos.`,
+      );
+    } catch (error) {
+      // Cast necesario: gaxios (usado internamente por google-auth-library) extiende Error
+      // con un `.response.data.message` que no está en el tipo base de Error.
+      const withResponse = error as Error & {
+        response?: { data?: { message?: string } };
+      };
+      const message =
+        withResponse.response?.data?.message ||
+        (error instanceof Error ? error.message : String(error));
+      this.logger.error('Error actualizando pase en Google Wallet: ' + message);
       // No lanzamos error para no interrumpir el flujo del escáner en caso de que Google falle
     }
   }
