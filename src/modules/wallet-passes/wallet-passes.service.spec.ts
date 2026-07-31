@@ -199,13 +199,72 @@ describe('WalletPassesService', () => {
           mockQueryResult({
             data: { description: 'Tarjeta', background_color: '#2563EB' },
           }),
-        ); // passes
+        ) // passes
+        .mockReturnValueOnce(mockQueryResult({ data: { stamp_goal: 10 } })); // loyalty_programs
 
       const result = await service.generatePassUrl('installation-1');
 
       expect(result).toEqual({
         url: 'https://pay.google.com/gp/v/save/signed-jwt-token',
       });
+    });
+
+    it('usa la meta real de sellos del programa de lealtad en vez de un valor fijo', async () => {
+      fromMock
+        .mockReturnValueOnce(
+          mockQueryResult({ data: { customer_id: 'customer-1' } }),
+        ) // pass_installations
+        .mockReturnValueOnce(
+          mockQueryResult({ data: { business_id: 'business-1' } }),
+        ) // customers
+        .mockReturnValueOnce(mockQueryResult({ data: { name: 'Mi Negocio' } })) // businesses
+        .mockReturnValueOnce(
+          mockQueryResult({
+            data: { description: 'Tarjeta', background_color: '#2563EB' },
+          }),
+        ) // passes
+        .mockReturnValueOnce(mockQueryResult({ data: { stamp_goal: 2 } })); // loyalty_programs
+
+      await service.generatePassUrl('installation-1');
+
+      const claims = getLastSignedClaims();
+      const object = claims.payload.genericObjects[0] as {
+        textModulesData: { id: string; body: string }[];
+      };
+      const stampsModule = object.textModulesData.find(
+        (m) => m.id === 'stamps_module',
+      );
+
+      expect(stampsModule?.body).toBe('0 / 2');
+    });
+
+    it('usa 10 como meta de sellos por defecto si no hay programa de lealtad activo', async () => {
+      fromMock
+        .mockReturnValueOnce(
+          mockQueryResult({ data: { customer_id: 'customer-1' } }),
+        ) // pass_installations
+        .mockReturnValueOnce(
+          mockQueryResult({ data: { business_id: 'business-1' } }),
+        ) // customers
+        .mockReturnValueOnce(mockQueryResult({ data: { name: 'Mi Negocio' } })) // businesses
+        .mockReturnValueOnce(
+          mockQueryResult({
+            data: { description: 'Tarjeta', background_color: '#2563EB' },
+          }),
+        ) // passes
+        .mockReturnValueOnce(mockQueryResult({ data: null })); // loyalty_programs (ninguno activo)
+
+      await service.generatePassUrl('installation-1');
+
+      const claims = getLastSignedClaims();
+      const object = claims.payload.genericObjects[0] as {
+        textModulesData: { id: string; body: string }[];
+      };
+      const stampsModule = object.textModulesData.find(
+        (m) => m.id === 'stamps_module',
+      );
+
+      expect(stampsModule?.body).toBe('0 / 10');
     });
 
     it('incluye heroImage y logo cuando el negocio los tiene configurados', async () => {
@@ -232,7 +291,8 @@ describe('WalletPassesService', () => {
               hero_image_url: 'https://example.com/hero.png',
             },
           }),
-        ); // passes
+        ) // passes
+        .mockReturnValueOnce(mockQueryResult({ data: { stamp_goal: 10 } })); // loyalty_programs
 
       await service.generatePassUrl('installation-1');
 
@@ -266,7 +326,8 @@ describe('WalletPassesService', () => {
           mockQueryResult({
             data: { description: 'Tarjeta', background_color: '#2563EB' },
           }),
-        ); // passes
+        ) // passes
+        .mockReturnValueOnce(mockQueryResult({ data: { stamp_goal: 10 } })); // loyalty_programs
 
       await service.generatePassUrl('installation-1');
 

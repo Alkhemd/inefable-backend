@@ -203,9 +203,17 @@ export class WalletPassesService {
       .eq('business_id', customer.business_id)
       .single();
 
+    const { data: loyaltyProgram } = await supabase
+      .from('loyalty_programs')
+      .select('stamp_goal')
+      .eq('business_id', customer.business_id)
+      .eq('is_active', true)
+      .single();
+
     const businessName = business.name || 'Tarjeta de Lealtad';
     const passDescription = pass?.description || 'Tarjeta de Lealtad';
     const hexBackgroundColor = pass?.background_color || '#2563EB';
+    const stampGoal = loyaltyProgram?.stamp_goal || 10;
 
     // Formatear llave privada para leer los saltos de línea correctamente desde .env
     // Manejar casos donde vengan con \n literal, comillas extra o saltos reales.
@@ -255,7 +263,7 @@ export class WalletPassesService {
         },
         {
           header: 'Sellos Acumulados',
-          body: `0 / 10`,
+          body: `0 / ${stampGoal}`,
           id: 'stamps_module',
         },
       ],
