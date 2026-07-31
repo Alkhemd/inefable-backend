@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -9,6 +10,12 @@ import * as jwt from 'jsonwebtoken';
 import { SupabaseService } from '../../infrastructure/supabase/supabase.service';
 import { AuditLogService } from '../../infrastructure/supabase/audit-log.service';
 import { UpdatePassConfigDto } from './dto/update-pass-config.dto';
+
+// Bucket público de Supabase Storage donde se guardan las imágenes de banner ("hero image")
+// de las tarjetas. Debe crearse una sola vez en el dashboard de Supabase (Storage > New bucket),
+// marcado como público, ya que Google Wallet necesita poder descargar la imagen sin autenticación.
+const HERO_IMAGE_BUCKET = 'wallet-assets';
+const ALLOWED_HERO_IMAGE_MIME_TYPES = ['image/png', 'image/jpeg'];
 
 @Injectable()
 export class WalletPassesService {
@@ -82,6 +89,7 @@ export class WalletPassesService {
           background_color: dto.background_color,
           foreground_color: dto.foreground_color,
           description: dto.description,
+          hero_image_url: dto.hero_image_url,
           updated_at: new Date().toISOString(),
         })
         .eq('id', existingPass.id)
@@ -114,6 +122,7 @@ export class WalletPassesService {
           background_color: dto.background_color || '#2563EB',
           foreground_color: dto.foreground_color || '#FFFFFF',
           description: dto.description || 'Tarjeta de Lealtad',
+          hero_image_url: dto.hero_image_url,
         })
         .select()
         .single();
@@ -177,7 +186,7 @@ export class WalletPassesService {
 
     const { data: business } = await supabase
       .from('businesses')
-      .select('name')
+      .select('name, logo_url')
       .eq('id', customer.business_id)
       .is('deleted_at', null)
       .single();
@@ -190,7 +199,7 @@ export class WalletPassesService {
 
     const { data: pass } = await supabase
       .from('passes')
-      .select('description, background_color')
+      .select('description, background_color, hero_image_url')
       .eq('business_id', customer.business_id)
       .single();
 
@@ -213,11 +222,31 @@ export class WalletPassesService {
 
     const objectId = `${issuerId}.${installationId}`;
 
+    const heroImage = pass?.hero_image_url
+      ? {
+          sourceUri: { uri: pass.hero_image_url },
+          contentDescription: {
+            defaultValue: { language: 'es-MX', value: businessName },
+          },
+        }
+      : undefined;
+
+    const logo = business.logo_url
+      ? {
+          sourceUri: { uri: business.logo_url },
+          contentDescription: {
+            defaultValue: { language: 'es-MX', value: businessName },
+          },
+        }
+      : undefined;
+
     const newObject = {
       id: objectId,
       classId: classId,
       state: 'ACTIVE',
       hexBackgroundColor: hexBackgroundColor,
+      ...(heroImage ? { heroImage } : {}),
+      ...(logo ? { logo } : {}),
       textModulesData: [
         {
           header: businessName,
@@ -328,5 +357,60 @@ export class WalletPassesService {
       this.logger.error('Error actualizando pase en Google Wallet: ' + message);
       // No lanzamos error para no interrumpir el flujo del escáner en caso de que Google falle
     }
+  }
+
+  async uploadHeroImage(
+    ownerUserId: string,
+    file: Buffer,
+    mimetype: string,
+    ip?: string,
+    userAgent?: string,
+  ) {
+    if (!ALLOWED_HERO_IMAGE_MIME_TYPES.includes(mimetype)) {
+      throw new BadRequestException(
+        'Formato de imagen no soportado. Usa PNG o JPG.',
+      );
+    }
+
+    const supabase = this.supabase.client;
+
+    const { data: business, error: businessError } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('owner_user_id', ownerUserId)
+      .is('deleted_at', null)
+      .single();
+
+    if (businessError || !business) {
+      throw new NotFoundException('Negocio no encontrado');
+    }
+
+    const extension = mimetype === 'image/png' ? 'png' : 'jpg';
+    const path = `hero-images/${business.id}-${Date.now()}.${extension}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(HERO_IMAGE_BUCKET)
+      .upload(path, file, { contentType: mimetype, upsert: true });
+
+    if (uploadError) {
+      this.logger.error(uploadError.message);
+      throw new InternalServerErrorException('No se pudo subir la imagen.');
+    }
+
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from(HERO_IMAGE_BUCKET).getPublicUrl(path);
+
+    await this.auditLog.log({
+      actorId: ownerUserId,
+      action: 'hero_image_uploaded',
+      entityType: 'passes',
+      entityId: business.id,
+      newValue: { url: publicUrl },
+      ip,
+      userAgent,
+    });
+
+    return { url: publicUrl };
   }
 }

@@ -1,4 +1,10 @@
-import { IsString, IsOptional, IsHexColor, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsHexColor,
+  IsUrl,
+  MaxLength,
+} from 'class-validator';
 
 export class UpdatePassConfigDto {
   @IsHexColor({
@@ -17,4 +23,8 @@ export class UpdatePassConfigDto {
   @MaxLength(255)
   @IsOptional()
   description?: string;
+
+  @IsUrl({}, { message: 'hero_image_url debe ser una URL válida' })
+  @IsOptional()
+  hero_image_url?: string;
 }

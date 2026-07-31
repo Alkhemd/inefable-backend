@@ -3,6 +3,7 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
+import multipart from '@fastify/multipart';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -14,6 +15,11 @@ async function bootstrap() {
     // para que @Ip() lea la IP real del cliente desde X-Forwarded-For en vez de la del proxy.
     new FastifyAdapter({ trustProxy: true }),
   );
+
+  // Soporte para subida de archivos (imagen de banner del pase, etc.). Límite de 5MB por archivo.
+  await app.register(multipart, {
+    limits: { fileSize: 5 * 1024 * 1024 },
+  });
 
   // Habilitar ValidationPipe global
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

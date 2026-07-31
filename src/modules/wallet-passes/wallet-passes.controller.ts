@@ -1,14 +1,17 @@
 import {
+  BadRequestException,
   Controller,
   Post,
   Body,
   Get,
   Patch,
+  Req,
   UseGuards,
   Ip,
   Headers,
 } from '@nestjs/common';
 import type { User } from '@supabase/supabase-js';
+import type { FastifyRequest } from 'fastify';
 import { WalletPassesService } from './wallet-passes.service';
 import { GeneratePassDto } from './dto/generate-pass.dto';
 import { UpdatePassConfigDto } from './dto/update-pass-config.dto';
@@ -44,5 +47,30 @@ export class WalletPassesController {
   @Post('generate')
   async generatePass(@Body() dto: GeneratePassDto) {
     return this.walletPassesService.generatePassUrl(dto.customerId);
+  }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Post('hero-image')
+  async uploadHeroImage(
+    @CurrentUser() user: User,
+    @Req() req: FastifyRequest,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string,
+  ) {
+    const file = await req.file();
+
+    if (!file) {
+      throw new BadRequestException('No se recibió ningún archivo.');
+    }
+
+    const buffer = await file.toBuffer();
+
+    return this.walletPassesService.uploadHeroImage(
+      user.id,
+      buffer,
+      file.mimetype,
+      ip,
+      userAgent,
+    );
   }
 }

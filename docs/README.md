@@ -15,3 +15,6 @@ Hemos dividido esta carpeta en tres áreas clave para mantener el contexto súpe
 
 3. **`/troubleshooting` (Cementerio de Bugs):**
    Si pasamos horas peleando contra un error extraño de Supabase o NestJS, documentamos la solución aquí para aplicar la cura instantánea si vuelve a ocurrir en el futuro.
+
+4. **`technical-debt.md` (Deuda Técnica Conocida):**
+   Cosas que se hicieron funcionar pero no de la forma ideal, a propósito, con el porqué. Cubre backend y frontend (aunque este repo no tenga acceso directo al código del frontend). Se actualiza cada vez que se detecta algo nuevo que se decide aplazar.

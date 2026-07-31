@@ -317,6 +317,7 @@ export type Database = {
           description: string | null;
           foreground_color: string | null;
           google_pass_id: string | null;
+          hero_image_url: string | null;
           id: string;
           is_published: boolean | null;
           pass_type: string;
@@ -333,6 +334,7 @@ export type Database = {
           description?: string | null;
           foreground_color?: string | null;
           google_pass_id?: string | null;
+          hero_image_url?: string | null;
           id?: string;
           is_published?: boolean | null;
           pass_type?: string;
@@ -349,6 +351,7 @@ export type Database = {
           description?: string | null;
           foreground_color?: string | null;
           google_pass_id?: string | null;
+          hero_image_url?: string | null;
           id?: string;
           is_published?: boolean | null;
           pass_type?: string;

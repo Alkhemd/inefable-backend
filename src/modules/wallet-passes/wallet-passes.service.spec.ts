@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  BadRequestException,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
@@ -7,6 +8,7 @@ import { WalletPassesService } from './wallet-passes.service';
 import { SupabaseService } from '../../infrastructure/supabase/supabase.service';
 import { AuditLogService } from '../../infrastructure/supabase/audit-log.service';
 import { mockQueryResult } from '../../test-utils/mock-supabase-query';
+import * as jwt from 'jsonwebtoken';
 
 const mockAuthorize = jest.fn().mockResolvedValue({ access_token: 'token' });
 const mockRequest = jest.fn().mockResolvedValue({});
@@ -23,15 +25,44 @@ jest.mock('jsonwebtoken', () => ({
   sign: jest.fn(() => 'signed-jwt-token'),
 }));
 
+interface WalletGenericObject {
+  heroImage?: unknown;
+  logo?: unknown;
+}
+
+interface WalletSaveClaims {
+  payload: { genericObjects: WalletGenericObject[] };
+}
+
+function getLastSignedClaims(): WalletSaveClaims {
+  const signMock = jwt.sign as jest.Mock;
+  const lastCall = signMock.mock.calls[signMock.mock.calls.length - 1] as [
+    WalletSaveClaims,
+  ];
+  return lastCall[0];
+}
+
 describe('WalletPassesService', () => {
   let service: WalletPassesService;
   let fromMock: jest.Mock;
   let auditLogMock: jest.Mock;
+  let storageUploadMock: jest.Mock;
+  let storageGetPublicUrlMock: jest.Mock;
+  let storageFromMock: jest.Mock;
 
   beforeEach(async () => {
     fromMock = jest.fn();
     auditLogMock = jest.fn().mockResolvedValue(undefined);
     mockRequest.mockClear();
+
+    storageUploadMock = jest.fn().mockResolvedValue({ error: null });
+    storageGetPublicUrlMock = jest.fn().mockReturnValue({
+      data: { publicUrl: 'https://storage.test/wallet-assets/hero.png' },
+    });
+    storageFromMock = jest.fn().mockReturnValue({
+      upload: storageUploadMock,
+      getPublicUrl: storageGetPublicUrlMock,
+    });
 
     process.env.GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL =
       'service-account@test.iam.gserviceaccount.com';
@@ -43,7 +74,12 @@ describe('WalletPassesService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WalletPassesService,
-        { provide: SupabaseService, useValue: { client: { from: fromMock } } },
+        {
+          provide: SupabaseService,
+          useValue: {
+            client: { from: fromMock, storage: { from: storageFromMock } },
+          },
+        },
         { provide: AuditLogService, useValue: { log: auditLogMock } },
       ],
     }).compile();
@@ -171,6 +207,75 @@ describe('WalletPassesService', () => {
         url: 'https://pay.google.com/gp/v/save/signed-jwt-token',
       });
     });
+
+    it('incluye heroImage y logo cuando el negocio los tiene configurados', async () => {
+      fromMock
+        .mockReturnValueOnce(
+          mockQueryResult({ data: { customer_id: 'customer-1' } }),
+        ) // pass_installations
+        .mockReturnValueOnce(
+          mockQueryResult({ data: { business_id: 'business-1' } }),
+        ) // customers
+        .mockReturnValueOnce(
+          mockQueryResult({
+            data: {
+              name: 'Mi Negocio',
+              logo_url: 'https://example.com/logo.png',
+            },
+          }),
+        ) // businesses
+        .mockReturnValueOnce(
+          mockQueryResult({
+            data: {
+              description: 'Tarjeta',
+              background_color: '#2563EB',
+              hero_image_url: 'https://example.com/hero.png',
+            },
+          }),
+        ); // passes
+
+      await service.generatePassUrl('installation-1');
+
+      const claims = getLastSignedClaims();
+      const object = claims.payload.genericObjects[0];
+
+      expect(object.heroImage).toEqual({
+        sourceUri: { uri: 'https://example.com/hero.png' },
+        contentDescription: {
+          defaultValue: { language: 'es-MX', value: 'Mi Negocio' },
+        },
+      });
+      expect(object.logo).toEqual({
+        sourceUri: { uri: 'https://example.com/logo.png' },
+        contentDescription: {
+          defaultValue: { language: 'es-MX', value: 'Mi Negocio' },
+        },
+      });
+    });
+
+    it('no incluye heroImage ni logo cuando el negocio no los tiene configurados', async () => {
+      fromMock
+        .mockReturnValueOnce(
+          mockQueryResult({ data: { customer_id: 'customer-1' } }),
+        ) // pass_installations
+        .mockReturnValueOnce(
+          mockQueryResult({ data: { business_id: 'business-1' } }),
+        ) // customers
+        .mockReturnValueOnce(mockQueryResult({ data: { name: 'Mi Negocio' } })) // businesses
+        .mockReturnValueOnce(
+          mockQueryResult({
+            data: { description: 'Tarjeta', background_color: '#2563EB' },
+          }),
+        ); // passes
+
+      await service.generatePassUrl('installation-1');
+
+      const claims = getLastSignedClaims();
+      const object = claims.payload.genericObjects[0];
+
+      expect(object.heroImage).toBeUndefined();
+      expect(object.logo).toBeUndefined();
+    });
   });
 
   describe('updatePassObject', () => {
@@ -197,6 +302,62 @@ describe('WalletPassesService', () => {
       await expect(
         service.updatePassObject('installation-1', 3, 10),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('uploadHeroImage', () => {
+    it('rechaza formatos de imagen no soportados', async () => {
+      await expect(
+        service.uploadHeroImage('owner-1', Buffer.from('x'), 'image/gif'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(fromMock).not.toHaveBeenCalled();
+    });
+
+    it('lanza NotFoundException si el negocio no existe', async () => {
+      fromMock.mockReturnValueOnce(mockQueryResult({ data: null }));
+
+      await expect(
+        service.uploadHeroImage('owner-1', Buffer.from('x'), 'image/png'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('sube la imagen a Storage y regresa la URL pública', async () => {
+      fromMock.mockReturnValueOnce(
+        mockQueryResult({ data: { id: 'business-1' } }),
+      );
+
+      const result = await service.uploadHeroImage(
+        'owner-1',
+        Buffer.from('fake-image-bytes'),
+        'image/png',
+        '1.2.3.4',
+        'jest-agent',
+      );
+
+      expect(storageFromMock).toHaveBeenCalledWith('wallet-assets');
+      expect(storageUploadMock).toHaveBeenCalledWith(
+        expect.stringContaining('hero-images/business-1-'),
+        expect.any(Buffer),
+        { contentType: 'image/png', upsert: true },
+      );
+      expect(result).toEqual({
+        url: 'https://storage.test/wallet-assets/hero.png',
+      });
+      expect(auditLogMock).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'hero_image_uploaded' }),
+      );
+    });
+
+    it('lanza InternalServerErrorException si Supabase Storage falla al subir', async () => {
+      fromMock.mockReturnValueOnce(
+        mockQueryResult({ data: { id: 'business-1' } }),
+      );
+      storageUploadMock.mockResolvedValueOnce({ error: { message: 'boom' } });
+
+      await expect(
+        service.uploadHeroImage('owner-1', Buffer.from('x'), 'image/png'),
+      ).rejects.toThrow(InternalServerErrorException);
     });
   });
 });
