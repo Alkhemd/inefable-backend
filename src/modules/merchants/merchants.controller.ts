@@ -12,6 +12,7 @@ import type { User } from '@supabase/supabase-js';
 import { MerchantsService } from './merchants.service';
 import { CreateMerchantDto } from './dto/create-merchant.dto';
 import { UpdateMerchantDto } from './dto/update-merchant.dto';
+import { SetSecurityModeDto } from './dto/set-security-mode.dto';
 import { SupabaseAuthGuard } from '../../core/guards/supabase-auth.guard';
 import { CurrentUser } from '../../core/decorators/current-user.decorator';
 
@@ -74,13 +75,13 @@ export class MerchantsController {
   @Post('security/mode')
   async setSecurityMode(
     @CurrentUser() user: User,
-    @Body() body: { anti_fraud_mode: string },
+    @Body() dto: SetSecurityModeDto,
     @Ip() ip: string,
     @Headers('user-agent') userAgent: string,
   ) {
     return this.merchantsService.updateMyBusiness(
       user.id,
-      { anti_fraud_mode: body.anti_fraud_mode },
+      { anti_fraud_mode: dto.anti_fraud_mode },
       { action: 'business_security_mode_updated', ip, userAgent },
     );
   }

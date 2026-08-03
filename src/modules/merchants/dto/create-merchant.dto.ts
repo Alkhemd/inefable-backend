@@ -4,9 +4,17 @@ import {
   IsEmail,
   IsOptional,
   IsEnum,
+  IsIn,
   IsUrl,
   IsNumber,
 } from 'class-validator';
+
+export const ANTI_FRAUD_MODES = [
+  'none',
+  'ip_only',
+  'gps_only',
+  'both',
+] as const;
 
 export class CreateMerchantDto {
   @IsString()
@@ -48,7 +56,9 @@ export class CreateMerchantDto {
   @IsOptional()
   radius_meters?: number;
 
-  @IsString()
+  @IsIn(ANTI_FRAUD_MODES, {
+    message: `anti_fraud_mode debe ser uno de: ${ANTI_FRAUD_MODES.join(', ')}`,
+  })
   @IsOptional()
   anti_fraud_mode?: string;
 
